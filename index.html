@@ -1,0 +1,66 @@
+<!doctype html><html lang="zh-Hant"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>k = x^(1/x) · 複數分支 3D</title>
+<style>*{box-sizing:border-box}body{margin:0;background:#0b1220;color:#e5edf9;font:15px system-ui,sans-serif}header{padding:20px 24px;border-bottom:1px solid #27354a}h1{margin:0 0 8px;font-size:25px}p{margin:7px 0;color:#aebdd2;line-height:1.6}main{display:grid;grid-template-columns:290px 1fr;height:calc(100vh - 120px);min-height:540px}aside{padding:20px;overflow:auto;background:#111c2e}label{display:block;margin:12px 0}input[type=number]{width:92px;background:#0b1220;color:white;border:1px solid #455570;border-radius:5px;padding:7px}input[type=range]{width:100%}button{background:#233951;color:white;border:1px solid #4a6688;padding:8px 12px;border-radius:6px;cursor:pointer;margin:4px 3px 4px 0}button:hover{background:#355575}.branches label{margin:7px 0}.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin:0 8px}section{position:relative;overflow:hidden}canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}canvas:active{cursor:grabbing}#tip{position:absolute;pointer-events:none;background:#101d30ee;border:1px solid #5f779a;border-radius:7px;padding:10px;display:none;font-size:13px;white-space:pre;z-index:2}#status{position:absolute;left:16px;bottom:12px;background:#0b1220d9;padding:8px 12px;font-size:12px;color:#afc2dc;border-radius:5px;pointer-events:none}small{color:#aebdd2;line-height:1.7;display:block}.error{color:#ff9292}hr{border:0;border-top:1px solid #2d3d54;margin:18px 0}@media(max-width:760px){main{display:flex;flex-direction:column;height:auto}aside{max-height:330px}section{height:65vh;min-height:400px}header{padding:14px}h1{font-size:21px}}</style>
+<header><h1>k = x<sup>1/x</sup> · 七個複數分支</h1><p>左鍵拖曳旋轉 · 滾輪縮放 · 右鍵或 Shift＋拖曳平移 · 指向曲線讀取數值</p></header>
+<main><aside><b>顯示範圍（x ≠ 0）</b><label>負半軸 起點 <input id="negStart" type="number" value="-10" min="-100" max="-0.1" step="0.1"></label><label>負半軸 終點 <input id="negEnd" type="number" value="-0.48" min="-100" max="-0.1" step="0.01"></label><label>正半軸 終點 <input id="posEnd" type="number" value="10" min="0.1" max="100" step="0.5"></label><label><input type="checkbox" id="positive" checked> 顯示正半軸</label><label><input type="checkbox" id="allPositive"> 正半軸也顯示七個分支</label><div id="error" class="error"></div><hr><b>座標軸刻度</b><div style="margin-top:10px">y 軸 · Re(k)</div><label style="display:inline-block;margin-right:12px"><input id="yLinear" type="radio" name="yScale" checked> Linear</label><label style="display:inline-block"><input id="yLog" type="radio" name="yScale"> Log</label><div>z 軸 · Im(k)</div><label style="display:inline-block;margin-right:12px"><input id="zLinear" type="radio" name="zScale" checked> Linear</label><label style="display:inline-block"><input id="zLog" type="radio" name="zScale"> Log</label><small>Log 使用對稱對數：sign(v) × log₁₀(1 + |v|)，保留負數與零。刻度與游標讀值仍為原始數值。參考圓在非線性刻度下會變形。</small><hr><b>分支 n</b><div id="branches" class="branches"></div><button id="all">全部顯示</button><button id="principal">只看 n = 0</button><hr><b>指定 x 的截面</b><label>x = <input type="number" id="sliceX" value="-3" step="0.1"></label><input id="slice" aria-label="截面 x" type="range" min="-10" max="-0.48" value="-3" step="0.001"><label><input type="checkbox" id="circle" checked> 顯示 |k| 的參考圓</label><small>彩色點是所選分支在此 x 的值；淡色圓只是模長參考，並不表示整個圓都是解。</small><hr><button id="reset">重設視角</button><button id="endView">沿 x 軸觀察</button><small id="scale"></small><hr><small>負半軸：<br>kₙ = exp[(ln|x| + i(2n+1)π)/x]<br><br>正半軸（多值模式）：<br>kₙ = exp[(ln x + i2nπ)/x]<br><br>n = 0 使用主值選擇，負半軸取 arg(x) = π。不同 n 在某些 x 會重合。圖中僅顯示 n = −3…3，不包含所有整數分支。<br><br>x → 0⁻ 時模長急遽增大；負半軸終點限制為 ≤ −0.1。三軸分別縮放以便觀察，刻度顯示原始數值。</small></aside><section><canvas id="plot" aria-label="可拖曳的三維複數分支圖"></canvas><div id="tip"></div><div id="status"></div></section></main>
+<script>
+'use strict';
+const $=id=>document.getElementById(id),canvas=$('plot'),ctx=canvas.getContext('2d');
+const colors=['#a78bfa','#38bdf8','#2dd4bf','#fbbf24','#fb7185','#f97316','#e879f9'];
+const enabled=new Set([-3,-2,-1,0,1,2,3]);
+let config={a:-10,b:-.48,p:10},curves=[],radius=4,width=1,height=1,hoverPoints=[],raf=false;
+let view={yaw:-.68,pitch:.42,zoom:1,panX:0,panY:0};
+function value(x,n){const r=Math.exp(Math.log(Math.abs(x))/x),angle=(x<0?(2*n+1)*Math.PI:2*n*Math.PI)/x;return {x,y:r*Math.cos(angle),z:r*Math.sin(angle),n,r};}
+for(let n=-3;n<=3;n++){let label=document.createElement('label');label.innerHTML=`<input type="checkbox" checked><span class="dot" style="background:${colors[n+3]}"></span>n = ${n}${n===0?'（主值）':''}`;label.firstChild.onchange=e=>{e.target.checked?enabled.add(n):enabled.delete(n);schedule()};$('branches').append(label)}
+function build(){curves=[];radius=0;const positive=$('positive').checked,allPositive=$('allPositive').checked;
+ for(let n=-3;n<=3;n++){
+  const points=[],u0=-1/config.a,u1=-1/config.b,count=Math.max(800,Math.ceil(Math.abs(2*n+1)*Math.PI*(u1-u0)/.018));
+  for(let j=0;j<=count;j++){const x=-1/(u0+(u1-u0)*j/count);const pt=value(x,n);points.push(pt);radius=Math.max(radius,pt.r)}curves.push({n,points});
+  if(positive&&(n===0||allPositive)){const pts=[],v0=1/config.p,v1=20,m=Math.max(800,Math.ceil(2*Math.abs(n)*Math.PI*(v1-v0)/.025));
+   for(let j=0;j<=m;j++){const x=1/(v1-(v1-v0)*j/m),pt=value(x,n);pts.push(pt);radius=Math.max(radius,pt.r)}curves.push({n,points:pts});}
+ }
+ radius*=1.08;
+ $('slice').min=config.a;$('slice').max=config.b;$('sliceX').value=Math.max(config.a,Math.min(config.b,Number($('sliceX').value)));$('slice').value=$('sliceX').value;
+ $('scale').textContent=`Re / Im 刻度範圍：±${fmt(radius)}。正半軸取 x ≥ 0.05。`;
+ schedule();
+}
+function fmt(n){return Math.abs(n)>=1e5||Math.abs(n)>0&&Math.abs(n)<.0001?n.toExponential(4):Number(n.toPrecision(6)).toString()}
+function axisForward(v,axis){return $(axis+'Log').checked?Math.sign(v)*Math.log1p(Math.abs(v))/Math.LN10:v}
+function axisInverse(v,axis){return $(axis+'Log').checked?Math.sign(v)*Math.expm1(Math.abs(v)*Math.LN10):v}
+function axisPosition(v,axis){return axisForward(v,axis)/axisForward(radius,axis)}
+function axisTick(t,axis){return axisInverse(t*axisForward(radius,axis),axis)}
+function normalized(p){const xmax=$('positive').checked?config.p:config.b;return [(p.x-(config.a+xmax)/2)/(xmax-config.a)*2,axisPosition(p.y,'y'),axisPosition(p.z,'z')]}
+function projectXYZ(p){const [x,y,z]=p,cy=Math.cos(view.yaw),sy=Math.sin(view.yaw),cp=Math.cos(view.pitch),sp=Math.sin(view.pitch);const a=x*cy-y*sy,b=x*sy+y*cy,v=b*sp+z*cp,depth=b*cp-z*sp,s=Math.min(width,height)*.32*view.zoom,fac=5/(5+depth);return {x:width/2+view.panX+a*s*fac,y:height/2+view.panY-v*s*fac,d:depth}}
+function project(p){return projectXYZ(normalized(p))}
+function line(a,b,color,w=1){ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.strokeStyle=color;ctx.lineWidth=w;ctx.stroke()}
+function textAt(p,t,color='#bdcbe0'){ctx.font='12px system-ui';ctx.fillStyle=color;ctx.fillText(t,p.x+5,p.y-5)}
+function schedule(){if(!raf){raf=true;requestAnimationFrame(()=>{raf=false;draw()})}}
+function draw(){ctx.clearRect(0,0,width,height);hoverPoints=[];const xmax=$('positive').checked?config.p:config.b;
+ // Bounding box and grid, with raw-value tick labels.
+ const corners=[];for(let x of [-1,1])for(let y of [-1,1])for(let z of [-1,1])corners.push([x,y,z]);
+ for(let i=0;i<8;i++)for(let j=i+1;j<8;j++)if(corners[i].filter((v,k)=>v!==corners[j][k]).length===1)line(projectXYZ(corners[i]),projectXYZ(corners[j]),'#33445c');
+ for(let t=-1;t<=1.01;t+=.5){line(projectXYZ([t,-1,-1]),projectXYZ([t,1,-1]),'#24334a');line(projectXYZ([-1,t,-1]),projectXYZ([1,t,-1]),'#24334a');textAt(projectXYZ([t,-1,-1]),fmt(config.a+(t+1)/2*(xmax-config.a)));textAt(projectXYZ([1,t,-1]),fmt(axisTick(t,'y')));textAt(projectXYZ([-1,-1,t]),fmt(axisTick(t,'z')))}
+ textAt(projectXYZ([1.15,-1,-1]),'x','#fff');textAt(projectXYZ([1,1.15,-1]),'y = Re(k) · '+($('yLog').checked?'Log':'Linear'),'#fff');textAt(projectXYZ([-1,-1,1.15]),'z = Im(k) · '+($('zLog').checked?'Log':'Linear'),'#fff');
+ const segments=[];
+ for(const curve of curves){if(!enabled.has(curve.n))continue;let prev=null;curve.points.forEach((p,i)=>{const q=project(p);if(prev)segments.push({a:prev,b:q,c:colors[curve.n+3],d:(prev.d+q.d)/2});prev=q;if(i%3===0)hoverPoints.push({...q,p})})}
+ segments.sort((a,b)=>b.d-a.d);for(const s of segments)line(s.a,s.b,s.c,s.c===colors[3]?2.3:1.35);
+ const x=Number($('sliceX').value);
+ if(Number.isFinite(x)&&x!==0&&x>=config.a&&x<=xmax&&(x<0||$('positive').checked)){
+  const r=value(x,0).r;if($('circle').checked){let prev=null;for(let j=0;j<=160;j++){const angle=j*Math.PI/80,q=project({x,y:r*Math.cos(angle),z:r*Math.sin(angle)});if(prev)line(prev,q,'#ffffff66',1);prev=q}}
+  const ns=x>0&&!$('allPositive').checked?[0]:[...enabled];for(const n of ns){if(!enabled.has(n))continue;const p=value(x,n),q=project(p);ctx.beginPath();ctx.arc(q.x,q.y,5,0,2*Math.PI);ctx.fillStyle=colors[n+3];ctx.fill();ctx.strokeStyle='#fff';ctx.stroke();hoverPoints.push({...q,p})}
+ }
+ $('status').textContent=`x: [${config.a}, ${config.b}]${$('positive').checked?' ∪ [0.05, '+config.p+']':''}  ·  ${enabled.size} 個所選分支  ·  截面 x = ${fmt(x)}`;
+}
+function apply(){if(['negStart','negEnd','posEnd'].some(id=>$(id).value.trim()==='')){$('error').textContent='請輸入完整範圍；目前保留上一個有效畫面。';return}const a=Number($('negStart').value),b=Number($('negEnd').value),p=Number($('posEnd').value);if(!Number.isFinite(a+b+p)||a>=b||a< -100||b>-.1||p<.1||p>100){$('error').textContent='請設定 −100 ≤ 起點 < 終點 ≤ −0.1，且正半軸終點為 0.1…100。';return}$('error').textContent='';config={a,b,p};build()}
+for(const id of ['negStart','negEnd','posEnd'])$(id).oninput=apply;$('positive').onchange=build;$('allPositive').onchange=build;$('circle').onchange=schedule;for(const id of ['yLinear','yLog','zLinear','zLog'])$(id).onchange=()=>{$('tip').style.display='none';schedule()};
+$('slice').oninput=()=>{$('sliceX').value=$('slice').value;schedule()};$('sliceX').oninput=()=>{const x=Number($('sliceX').value);if(x>=config.a&&x<=config.b)$('slice').value=x;schedule()};
+function select(all){enabled.clear();[...$('branches').children].forEach((l,i)=>{let on=all||i===3;l.firstChild.checked=on;if(on)enabled.add(i-3)});schedule()}
+$('all').onclick=()=>select(true);$('principal').onclick=()=>select(false);$('reset').onclick=()=>{view={yaw:-.68,pitch:.42,zoom:1,panX:0,panY:0};schedule()};$('endView').onclick=()=>{view={yaw:-Math.PI/2,pitch:0,zoom:1,panX:0,panY:0};schedule()};
+let drag=null;canvas.oncontextmenu=e=>e.preventDefault();
+canvas.onpointerdown=e=>{drag={x:e.clientX,y:e.clientY,pan:e.button===2||e.shiftKey};canvas.setPointerCapture(e.pointerId);$('tip').style.display='none'};
+canvas.onpointerup=()=>drag=null;canvas.onpointercancel=()=>drag=null;
+canvas.onpointermove=e=>{if(drag){const dx=e.clientX-drag.x,dy=e.clientY-drag.y;if(drag.pan){view.panX+=dx;view.panY+=dy}else{view.yaw+=dx*.008;view.pitch=Math.max(-1.5,Math.min(1.5,view.pitch+dy*.008))}drag.x=e.clientX;drag.y=e.clientY;schedule();return}
+ const rect=canvas.getBoundingClientRect(),mx=e.clientX-rect.left,my=e.clientY-rect.top;let nearest=null,best=100;for(const q of hoverPoints){const d=(q.x-mx)**2+(q.y-my)**2;if(d<best){best=d;nearest=q}}if(!nearest){$('tip').style.display='none';return}const p=nearest.p,tip=$('tip');tip.textContent=`n = ${p.n}\nx = ${fmt(p.x)}\nRe(k) = ${fmt(p.y)}\nIm(k) = ${fmt(p.z)}\n|k| = ${fmt(p.r)}`;tip.style.display='block';tip.style.left=Math.max(0,Math.min(width-195,mx+15))+'px';tip.style.top=Math.max(0,Math.min(height-135,my+15))+'px';};
+canvas.onpointerleave=()=>{$('tip').style.display='none'};canvas.addEventListener('wheel',e=>{e.preventDefault();view.zoom=Math.max(.15,Math.min(12,view.zoom*Math.exp(-e.deltaY*.001)));schedule()},{passive:false});
+new ResizeObserver(()=>{const rect=canvas.getBoundingClientRect();width=rect.width;height=rect.height;const dpr=window.devicePixelRatio||1;canvas.width=width*dpr;canvas.height=height*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);schedule()}).observe(canvas);
+build();
+</script></html>
